@@ -72,17 +72,19 @@
     async function predict() {
         // predict can take in an image, video or canvas html element
         const prediction = await model.predict(webcam.canvas);
+        let background = "#FFFDD0"; // cream unless the model is confident
         for (let i = 0; i < maxPredictions; i++) {
             const classPrediction =
                 prediction[i].className + ": " + prediction[i].probability.toFixed(2);
             labelContainer.childNodes[i].innerHTML = classPrediction;
 
-            // turn the background red when the model is confident it's China
-            if (prediction[i].className === "China") {
-                document.body.style.backgroundColor =
-                    prediction[i].probability >= 0.8 ? "red" : "#FFFDD0";
+            // red for China, olive green for Greek, once the score reaches 0.8
+            if (prediction[i].probability >= 0.8) {
+                if (prediction[i].className === "China") background = "red";
+                if (prediction[i].className === "Greek") background = "olive";
             }
         }
+        document.body.style.backgroundColor = background;
     }
     
 </script>
