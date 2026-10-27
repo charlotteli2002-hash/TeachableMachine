@@ -1,17 +1,81 @@
+<link href="https://fonts.googleapis.com/css2?family=Rubik+Bubbles&display=swap" rel="stylesheet">
 <style>
     body {
         background-color: #FFFDD0;
     }
+    /* bubble font, 50% bigger than the default heading size (2em) */
     h1 {
         text-align: center;
+        font-family: "Rubik Bubbles", cursive;
+        font-size: 3em;
+    }
+    /* center the webcam and make it 40% of the screen width */
+    #stage {
+        position: relative;
+        width: 40vw;
+        margin: 2em auto 0; /* two lines of space below the buttons */
+    }
+    #webcam-container canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+    }
+    /* make the scores 50% bigger, and put them to the left of the webcam,
+       lined up with its bottom-left corner */
+    #label-container {
+        font-size: 1.5em;
+        position: absolute;
+        right: 100%;
+        bottom: 0;
+        margin-right: 0.5em;
+        text-align: right;
+        white-space: nowrap;
+    }
+    /* center the Start and Stop buttons and make them twice as big */
+    #controls {
+        text-align: center;
+    }
+    #controls button {
+        zoom: 2;
+    }
+    /* olives that fall down the screen while Greek is detected */
+    .olive {
+        position: fixed;
+        top: -1.5em;
+        font-size: 2.5em;
+        pointer-events: none;
+        animation: fall linear forwards;
+    }
+    @keyframes fall {
+        to {
+            transform: translateY(110vh) rotate(360deg);
+        }
+    }
+    /* firework sparks that burst outwards while China is detected */
+    .spark {
+        position: fixed;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        pointer-events: none;
+        animation: burst 1s ease-out forwards;
+    }
+    @keyframes burst {
+        to {
+            transform: translate(var(--dx), var(--dy));
+            opacity: 0;
+        }
     }
 </style>
 <h1>What Style is This</h1>
-         <div>Teachable Machine Image Model</div>
-<button type="button" onclick="init()">Start</button>
-<button type="button" onclick="stopWebcam()">Stop</button>
-<div id="webcam-container"></div>
-<div id="label-container"></div>
+<div id="controls">
+    <button type="button" onclick="init()">Start</button>
+    <button type="button" onclick="stopWebcam()">Stop</button>
+</div>
+<div id="stage">
+    <div id="webcam-container"></div>
+    <div id="label-container"></div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 <script type="text/javascript">
@@ -22,6 +86,8 @@
     const URL = "https://teachablemachine.withgoogle.com/models/Bew799exJ/";
 
     let model, webcam, labelContainer, maxPredictions, animationId;
+    let lastOliveTime = 0;
+    let lastFireworkTime = 0;
 
     // Load the image model and setup the webcam
     async function init() {
@@ -37,7 +103,7 @@
 
         // Convenience function to setup a webcam
         const flip = true; // whether to flip the webcam
-        webcam = new tmImage.Webcam(200, 200, flip); // width, height, flip
+        webcam = new tmImage.Webcam(600, 600, flip); // width, height, flip
         await webcam.setup(); // request access to the webcam
         await webcam.play();
         animationId = window.requestAnimationFrame(loop);
@@ -66,6 +132,40 @@
         document.getElementById("webcam-container").innerHTML = "";
         document.getElementById("label-container").innerHTML = "";
         document.body.style.backgroundColor = "#FFFDD0";
+        document.querySelectorAll(".olive, .spark").forEach((el) => el.remove());
+    }
+
+    // drop one olive from a random spot along the top of the screen
+    function dropOlive() {
+        const olive = document.createElement("div");
+        olive.className = "olive";
+        olive.textContent = "\u{1FAD2}"; // olive emoji
+        olive.style.left = Math.random() * 95 + "vw";
+        olive.style.animationDuration = 2 + Math.random() * 2 + "s"; // 2-4 seconds to fall
+        olive.addEventListener("animationend", () => olive.remove());
+        document.body.appendChild(olive);
+    }
+
+    // set off one firework: a ring of sparks bursting out from a random spot
+    function launchFirework() {
+        const colors = ["gold", "yellow", "white", "orange"];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const x = 10 + Math.random() * 80; // vw
+        const y = 10 + Math.random() * 50; // vh
+        const sparkCount = 24;
+        for (let i = 0; i < sparkCount; i++) {
+            const spark = document.createElement("div");
+            spark.className = "spark";
+            spark.style.left = x + "vw";
+            spark.style.top = y + "vh";
+            spark.style.backgroundColor = color;
+            const angle = (i / sparkCount) * 2 * Math.PI;
+            const distance = 80 + Math.random() * 40; // px
+            spark.style.setProperty("--dx", Math.cos(angle) * distance + "px");
+            spark.style.setProperty("--dy", Math.sin(angle) * distance + "px");
+            spark.addEventListener("animationend", () => spark.remove());
+            document.body.appendChild(spark);
+        }
     }
 
     // run the webcam image through the image model
@@ -78,13 +178,27 @@
                 prediction[i].className + ": " + prediction[i].probability.toFixed(2);
             labelContainer.childNodes[i].innerHTML = classPrediction;
 
-            // red for China, olive green for Greek, once the score reaches 0.8
-            if (prediction[i].probability >= 0.8) {
+            // red for China, olive green for Greek, blue for Byzantium, once the score reaches 0.6
+            if (prediction[i].probability >= 0.6) {
                 if (prediction[i].className === "China") background = "red";
                 if (prediction[i].className === "Greek") background = "olive";
+                if (prediction[i].className === "Byzantium") background = "blue";
             }
         }
         document.body.style.backgroundColor = background;
+
+        // while Greek is detected, drop a new olive every 200ms
+        const now = performance.now();
+        if (background === "olive" && now - lastOliveTime > 200) {
+            dropOlive();
+            lastOliveTime = now;
+        }
+
+        // while China is detected, set off a new firework every 400ms
+        if (background === "red" && now - lastFireworkTime > 400) {
+            launchFirework();
+            lastFireworkTime = now;
+        }
     }
     
 </script>
